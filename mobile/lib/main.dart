@@ -24,12 +24,14 @@ import 'package:immich_mobile/pages/common/splash_screen.page.dart';
 import 'package:immich_mobile/platform/background_worker_lock_api.g.dart';
 import 'package:immich_mobile/platform/native_sync_api.g.dart';
 import 'package:immich_mobile/platform/permission_api.g.dart';
+import 'package:immich_mobile/platform/tailnet_api.g.dart';
 import 'package:immich_mobile/providers/app_life_cycle.provider.dart';
 import 'package:immich_mobile/providers/asset_viewer/share_intent_upload.provider.dart';
 import 'package:immich_mobile/providers/infrastructure/platform.provider.dart';
 import 'package:immich_mobile/providers/infrastructure/settings.provider.dart';
 import 'package:immich_mobile/providers/locale_provider.dart';
 import 'package:immich_mobile/providers/routes.provider.dart';
+import 'package:immich_mobile/providers/tailnet.provider.dart' show applyTailnetProxyToDownloader;
 import 'package:immich_mobile/providers/theme.provider.dart';
 import 'package:immich_mobile/providers/view_intent/view_intent_handler.provider.dart';
 import 'package:immich_mobile/repositories/asset_media.repository.dart';
@@ -123,6 +125,10 @@ Future<void> initApp() async {
   await FileDownloader().trackTasksInGroup(kDownloadGroupLivePhoto, markDownloadedComplete: false);
 
   unawaited(FileDownloader().trackTasks());
+
+  // Uploads run on HttpURLConnection, which does not honour the platform proxy
+  // selector: point them at the embedded tailnet proxy when it is on.
+  unawaited(applyTailnetProxyToDownloader(TailnetApi()));
 
   LicenseRegistry.addLicense(() async* {
     for (final license in nonPubLicenses.entries) {

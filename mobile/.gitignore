@@ -42,6 +42,9 @@ test/drift/main/generated/
 /ios/**/*.g.swift
 /android/**/*.g.kt
 
+# Local Gradle runs
+/android/build/
+
 # Web related
 lib/generated_plugin_registrant.dart
 

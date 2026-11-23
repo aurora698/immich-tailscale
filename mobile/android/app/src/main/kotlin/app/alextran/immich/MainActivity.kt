@@ -20,6 +20,9 @@ import app.alextran.immich.images.RemoteImageApi
 import app.alextran.immich.images.RemoteImagesImpl
 import app.alextran.immich.passkey.PasskeyPlugin
 import app.alextran.immich.permission.PermissionApi
+import app.alextran.immich.tailnet.TailnetApi
+import app.alextran.immich.tailnet.TailnetApiImpl
+import app.alextran.immich.tailnet.TailnetManager
 import app.alextran.immich.permission.PermissionApiImpl
 import app.alextran.immich.sync.NativeSyncApi
 import app.alextran.immich.sync.NativeSyncApiImpl26
@@ -27,6 +30,9 @@ import app.alextran.immich.sync.NativeSyncApiImpl30
 import app.alextran.immich.viewintent.ViewIntentPlugin
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 
 class MainActivity : FlutterFragmentActivity() {
   override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -41,12 +47,17 @@ class MainActivity : FlutterFragmentActivity() {
   }
 
   companion object {
+    // Outlives both Flutter engines: the tailnet node belongs to the process.
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
     fun registerPlugins(ctx: Context, flutterEngine: FlutterEngine) {
       HttpClientManager.initialize(ctx)
+      TailnetManager.initialize(ctx, appScope)
       NativeVideoPlayerPlugin.dataSourceFactory = HttpClientManager::createDataSourceFactory
       flutterEngine.plugins.add(NetworkApiPlugin())
 
       val messenger = flutterEngine.dartExecutor.binaryMessenger
+      TailnetApi.setUp(messenger, TailnetApiImpl(appScope))
       val backgroundEngineLockImpl = BackgroundEngineLock(ctx)
       BackgroundWorkerLockApi.setUp(messenger, backgroundEngineLockImpl)
       val nativeSyncApiImpl =

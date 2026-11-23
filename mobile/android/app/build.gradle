@@ -86,6 +86,8 @@ flutter {
 }
 
 dependencies {
+  // Embedded userspace Tailscale node (mobile/android/tsbridge, built with gomobile).
+  implementation files("libs/tsbridge.aar")
   implementation libs.okhttp
   implementation libs.cronet.embedded
   implementation libs.media3.datasource.okhttp

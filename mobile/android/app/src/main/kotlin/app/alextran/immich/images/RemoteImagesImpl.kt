@@ -274,7 +274,9 @@ private object ImageFetcherManager {
   }
 
   private fun build(): ImageFetcher {
-    return if (HttpClientManager.isMtls) {
+    // Cronet cannot use the tailnet proxy, so thumbnails take the OkHttp path
+    // whenever the node is enabled (or mTLS is configured).
+    return if (HttpClientManager.mediaViaOkHttp) {
       OkHttpImageFetcher.create(cacheDir)
     } else {
       CronetImageFetcher()
