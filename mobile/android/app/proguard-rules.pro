@@ -45,3 +45,10 @@
 -keep class okio.** { *; }
 -keep class com.example.ok_http.** { *; }
 ##---------------End: proguard configuration for ok_http JNI ----------
+
+##---------------Begin: embedded tailnet (gomobile) ----------
+# gomobile binds Tsbridge through JNI, which R8 cannot trace. Keep the Kotlin
+# wrapper and the generated go runtime so release builds still start the node.
+-keep class app.alextran.immich.tsbridge.** { *; }
+-keep class go.** { *; }
+##---------------End: embedded tailnet (gomobile) ----------

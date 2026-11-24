@@ -1,8 +1,8 @@
 name: Build tailnet APK
 
-# Self-contained build for the tailnet fork: no organisation secrets, no
-# self-hosted runner. Generated sources are vendored in the repository, so the
-# only prerequisites are Flutter 3.47.9, JDK 21, Android SDK/NDK and Rust 1.99.1.
+# Self-contained: no organisation secrets and no self-hosted runner. Push to
+# `tailnet` builds debug, push to `release` builds a signed release APK.
+# Generated sources are vendored, so no codegen step is needed.
 
 on:
   workflow_dispatch:
@@ -11,8 +11,17 @@ on:
         description: Branch or tag to build
         required: false
         default: tailnet
+      mode:
+        description: Build mode
+        type: choice
+        options:
+          - debug
+          - release
+        default: debug
   push:
-    branches: [tailnet]
+    branches:
+      - tailnet
+      - release
     paths:
       - 'mobile/**'
       - 'native/**'
@@ -31,12 +40,16 @@ concurrency:
 env:
   FLUTTER_VERSION: '3.47.9'
   NDK_VERSION: '28.2.13676358'
+  BUILD_MODE: ${{ inputs.mode || (github.ref_name == 'release' && 'release' || 'debug') }}
+  KEY_ALIAS: immich
+  KEY_STORE_PASSWORD: immich-tailnet
+  KEY_PASSWORD: immich-tailnet
 
 jobs:
   build:
-    name: Build debug APK (arm64)
+    name: Build APK (arm64)
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 150
 
     steps:
       - name: Free disk space
@@ -118,21 +131,66 @@ jobs:
         working-directory: mobile
         run: |
           export ANDROID_NDK_HOME="${ANDROID_HOME}/ndk/${NDK_VERSION}"
+          echo "mode=${BUILD_MODE}"
           echo "ANDROID_HOME=${ANDROID_HOME}"
           echo "ANDROID_NDK_HOME=${ANDROID_NDK_HOME}"
           ls -d "${ANDROID_NDK_HOME}" || true
-          ls -1 "${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/"*/bin/ 2>/dev/null | grep -E 'aarch64.*35-clang' | head -5 || true
           rustc --version || true
-          cargo --version || true
           flutter doctor -v || true
 
-      - name: Build debug APK
+      - name: Restore release keystore
+        if: env.BUILD_MODE == 'release'
+        uses: actions/cache@v4
+        with:
+          path: mobile/android/key.jks
+          key: release-keystore-v1
+
+      - name: Ensure release keystore
+        if: env.BUILD_MODE == 'release'
+        working-directory: mobile/android
+        env:
+          ANDROID_STORE_PASSWORD: ${{ env.KEY_STORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ env.KEY_PASSWORD }}
+        run: |
+          if [ -s key.jks ]; then
+            echo "using cached keystore"
+          else
+            keytool -genkeypair -v -keystore key.jks -storetype PKCS12 \
+              -alias "${KEY_ALIAS}" -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass "${ANDROID_STORE_PASSWORD}" -keypass "${ANDROID_KEY_PASSWORD}" \
+              -dname "CN=Immich Tailnet, OU=Personal, O=Personal, L=Beijing, ST=Beijing, C=CN"
+          fi
+
+      - name: Build APK
         working-directory: mobile
+        env:
+          ALIAS: ${{ env.KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ env.KEY_PASSWORD }}
+          ANDROID_STORE_PASSWORD: ${{ env.KEY_STORE_PASSWORD }}
         run: |
           set -o pipefail
           export ANDROID_NDK_HOME="${ANDROID_HOME}/ndk/${NDK_VERSION}"
           export ANDROID_NDK_ROOT="${ANDROID_NDK_HOME}"
-          flutter build apk --debug --verbose --target-platform=android-arm64 2>&1 | tee /tmp/build.log
+          if [ "$BUILD_MODE" = "release" ]; then
+            flutter build apk --release --target-platform=android-arm64 2>&1 | tee /tmp/build.log
+          else
+            flutter build apk --debug --verbose --target-platform=android-arm64 2>&1 | tee /tmp/build.log
+          fi
+
+      - name: Resolve output paths
+        id: out
+        run: |
+          if [ "$BUILD_MODE" = "release" ]; then
+            echo "apk=mobile/build/app/outputs/flutter-apk/app-release.apk" >> "$GITHUB_OUTPUT"
+            echo "artifact=immich-tailnet-release-apk" >> "$GITHUB_OUTPUT"
+            echo "tag=apk-latest-release" >> "$GITHUB_OUTPUT"
+            echo "title=Latest tailnet release APK" >> "$GITHUB_OUTPUT"
+          else
+            echo "apk=mobile/build/app/outputs/flutter-apk/app-debug.apk" >> "$GITHUB_OUTPUT"
+            echo "artifact=immich-tailnet-debug-apk" >> "$GITHUB_OUTPUT"
+            echo "tag=apk-latest" >> "$GITHUB_OUTPUT"
+            echo "title=Latest tailnet debug APK" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Show artifact
         run: ls -lh mobile/build/app/outputs/flutter-apk/
@@ -140,8 +198,8 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: immich-tailnet-debug-apk
-          path: mobile/build/app/outputs/flutter-apk/app-debug.apk
+          name: ${{ steps.out.outputs.artifact }}
+          path: ${{ steps.out.outputs.apk }}
           if-no-files-found: error
           retention-days: 14
 
@@ -157,7 +215,6 @@ jobs:
             gh run view "${GITHUB_RUN_ID}" --log-failed > /tmp/fail.log 2>&1
             tail -n 400 /tmp/fail.log | cut -c1-60000 > /tmp/fail-tail.log
           fi
-          echo "--- failure log size ---"
           wc -c /tmp/fail-tail.log
           gh api -X POST "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/comments" \
             -f body="$(cat /tmp/fail-tail.log)" || true
@@ -171,16 +228,16 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-      - name: Publish APK to the apk-latest release
+      - name: Publish APK to release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: apk-latest
-          name: Latest tailnet debug APK
+          tag_name: ${{ steps.out.outputs.tag }}
+          name: ${{ steps.out.outputs.title }}
           prerelease: true
-          files: mobile/build/app/outputs/flutter-apk/app-debug.apk
+          files: ${{ steps.out.outputs.apk }}
           body: |
-            Debug APK built from `${{ github.sha }}` on `${{ github.ref_name }}`.
+            Built from `${{ github.sha }}` on `${{ github.ref_name }}` (mode: `${{ env.BUILD_MODE }}`).
 
-            Install with `adb install -r -t app-debug.apk`, or open the file on the
-            phone (it installs as `app.alextran.immich.debug`, side by side with the
-            store build).
+            Install with `adb install -r -t <file>.apk`, or open the file on the phone.
+            The release build installs as `app.alextran.immich` (same id as the store app), so it replaces it;
+            the debug build installs as `app.alextran.immich.debug` and coexists.
