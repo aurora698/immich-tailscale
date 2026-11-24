@@ -43,9 +43,6 @@ env:
   FLUTTER_VERSION: '3.47.9'
   NDK_VERSION: '28.2.13676358'
   BUILD_MODE: ${{ inputs.mode || (github.ref_name == 'release' && 'release' || 'debug') }}
-  KEY_ALIAS: immich
-  KEY_STORE_PASSWORD: immich-tailnet
-  KEY_PASSWORD: immich-tailnet
 
 jobs:
   build:
@@ -140,35 +137,8 @@ jobs:
           rustc --version || true
           flutter doctor -v || true
 
-      - name: Restore release keystore
-        if: env.BUILD_MODE == 'release'
-        uses: actions/cache@v4
-        with:
-          path: mobile/android/key.jks
-          key: release-keystore-v1
-
-      - name: Ensure release keystore
-        if: env.BUILD_MODE == 'release'
-        working-directory: mobile/android
-        env:
-          ANDROID_STORE_PASSWORD: ${{ env.KEY_STORE_PASSWORD }}
-          ANDROID_KEY_PASSWORD: ${{ env.KEY_PASSWORD }}
-        run: |
-          if [ -s key.jks ]; then
-            echo "using cached keystore"
-          else
-            keytool -genkeypair -v -keystore key.jks -storetype PKCS12 \
-              -alias "${KEY_ALIAS}" -keyalg RSA -keysize 2048 -validity 10000 \
-              -storepass "${ANDROID_STORE_PASSWORD}" -keypass "${ANDROID_KEY_PASSWORD}" \
-              -dname "CN=Immich Tailnet, OU=Personal, O=Personal, L=Beijing, ST=Beijing, C=CN"
-          fi
-
       - name: Build APK
         working-directory: mobile
-        env:
-          ALIAS: ${{ env.KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ env.KEY_PASSWORD }}
-          ANDROID_STORE_PASSWORD: ${{ env.KEY_STORE_PASSWORD }}
         run: |
           set -o pipefail
           export ANDROID_NDK_HOME="${ANDROID_HOME}/ndk/${NDK_VERSION}"
