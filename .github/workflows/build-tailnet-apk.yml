@@ -120,16 +120,25 @@ jobs:
         working-directory: mobile
         run: flutter pub get
 
+      - name: Environment check
+        working-directory: mobile
+        run: |
+          export ANDROID_NDK_HOME="${ANDROID_HOME}/ndk/${NDK_VERSION}"
+          echo "ANDROID_HOME=${ANDROID_HOME}"
+          echo "ANDROID_NDK_HOME=${ANDROID_NDK_HOME}"
+          ls -d "${ANDROID_NDK_HOME}" || true
+          ls -1 "${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/"*/bin/ 2>/dev/null | grep -E 'aarch64.*35-clang' | head -5 || true
+          rustc --version || true
+          cargo --version || true
+          flutter doctor -v || true
+
       - name: Build debug APK
         working-directory: mobile
         run: |
           set -o pipefail
           export ANDROID_NDK_HOME="${ANDROID_HOME}/ndk/${NDK_VERSION}"
           export ANDROID_NDK_ROOT="${ANDROID_NDK_HOME}"
-          echo "ANDROID_HOME=${ANDROID_HOME}"
-          echo "ANDROID_NDK_HOME=${ANDROID_NDK_HOME}"
-          ls "${ANDROID_NDK_HOME}" | head -5
-          flutter build apk --debug --target-platform=android-arm64 2>&1 | tee /tmp/build.log
+          flutter build apk --debug --verbose --target-platform=android-arm64 2>&1 | tee /tmp/build.log
 
       - name: Show artifact
         run: ls -lh mobile/build/app/outputs/flutter-apk/
@@ -148,12 +157,25 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set +e
-          gh run view "${GITHUB_RUN_ID}" --log-failed > /tmp/fail.log 2>&1
-          tail -n 200 /tmp/fail.log | cut -c1-60000 > /tmp/fail-tail.log
+          if [ -s /tmp/build.log ]; then
+            tail -n 400 /tmp/build.log | cut -c1-60000 > /tmp/fail-tail.log
+          else
+            gh run view "${GITHUB_RUN_ID}" --log-failed > /tmp/fail.log 2>&1
+            tail -n 400 /tmp/fail.log | cut -c1-60000 > /tmp/fail-tail.log
+          fi
           echo "--- failure log size ---"
           wc -c /tmp/fail-tail.log
           gh api -X POST "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/comments" \
             -f body="$(cat /tmp/fail-tail.log)" || true
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: /tmp/build.log
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Publish APK to the apk-latest release
         uses: softprops/action-gh-release@v2
