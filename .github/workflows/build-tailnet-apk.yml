@@ -22,6 +22,7 @@ on:
 
 permissions:
   contents: write
+  actions: read
 
 concurrency:
   group: tailnet-apk-${{ github.ref }}
@@ -67,6 +68,12 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
+
+      - name: Install host build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            nasm cmake ninja-build pkg-config libssl-dev
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
@@ -115,9 +122,14 @@ jobs:
 
       - name: Build debug APK
         working-directory: mobile
-        env:
-          ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/${{ env.NDK_VERSION }}
-        run: flutter build apk --debug --target-platform=android-arm64
+        run: |
+          set -o pipefail
+          export ANDROID_NDK_HOME="${ANDROID_HOME}/ndk/${NDK_VERSION}"
+          export ANDROID_NDK_ROOT="${ANDROID_NDK_HOME}"
+          echo "ANDROID_HOME=${ANDROID_HOME}"
+          echo "ANDROID_NDK_HOME=${ANDROID_NDK_HOME}"
+          ls "${ANDROID_NDK_HOME}" | head -5
+          flutter build apk --debug --target-platform=android-arm64 2>&1 | tee /tmp/build.log
 
       - name: Show artifact
         run: ls -lh mobile/build/app/outputs/flutter-apk/
@@ -129,6 +141,19 @@ jobs:
           path: mobile/build/app/outputs/flutter-apk/app-debug.apk
           if-no-files-found: error
           retention-days: 14
+
+      - name: Attach failure log to the commit
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          gh run view "${GITHUB_RUN_ID}" --log-failed > /tmp/fail.log 2>&1
+          tail -n 200 /tmp/fail.log | cut -c1-60000 > /tmp/fail-tail.log
+          echo "--- failure log size ---"
+          wc -c /tmp/fail-tail.log
+          gh api -X POST "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/comments" \
+            -f body="$(cat /tmp/fail-tail.log)" || true
 
       - name: Publish APK to the apk-latest release
         uses: softprops/action-gh-release@v2
