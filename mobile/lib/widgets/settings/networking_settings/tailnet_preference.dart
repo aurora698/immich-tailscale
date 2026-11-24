@@ -23,7 +23,6 @@ class TailnetPreference extends HookConsumerWidget {
     final enabledAsync = ref.watch(tailnetEnabledProvider);
     final status = ref.watch(tailnetStatusProvider).valueOrNull ?? const TailnetStatus();
     final enabled = enabledAsync.valueOrNull ?? false;
-    final peers = ref.watch(tailnetPeersProvider).valueOrNull ?? const <TailnetPeer>[];
     final authKeyController = useTextEditingController();
     final busy = useState(false);
     final ping = useState<TailnetPing?>(null);
@@ -88,7 +87,6 @@ class TailnetPreference extends HookConsumerWidget {
                 status: status,
                 busy: busy.value,
                 authKeyController: authKeyController,
-                peers: peers,
                 ping: ping.value,
                 onPing: measure,
                 onSignIn: () => run(() => ref.read(tailnetActionsProvider).signIn(authKeyController.text)),
@@ -140,7 +138,6 @@ class _Details extends StatelessWidget {
     required this.status,
     required this.busy,
     required this.authKeyController,
-    required this.peers,
     required this.ping,
     required this.onPing,
     required this.onSignIn,
@@ -150,7 +147,6 @@ class _Details extends StatelessWidget {
   final TailnetStatus status;
   final bool busy;
   final TextEditingController authKeyController;
-  final List<TailnetPeer> peers;
   final TailnetPing? ping;
   final Future<void> Function() onPing;
   final Future<void> Function() onSignIn;
@@ -159,36 +155,41 @@ class _Details extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (status.isRunning) {
-      final online = peers.where((p) => p.online).toList();
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _line(context, '地址', status.ips.isEmpty ? status.dnsName ?? '--' : status.ips.join(', ')),
           if (status.loginName != null) _line(context, '账号', status.loginName!),
-          if (online.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            const Text('连接方式', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
-            const SizedBox(height: 4),
-            for (final peer in online.take(4)) _peerLine(context, peer),
-          ],
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
+          const Divider(height: 1),
+          const SizedBox(height: 2),
           Row(
             children: [
               TextButton.icon(
                 onPressed: busy ? null : () => unawaited(onPing()),
                 icon: const Icon(Icons.speed_rounded, size: 18),
                 label: const Text('测试延迟'),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  visualDensity: VisualDensity.compact,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
               ),
-              const SizedBox(width: 8),
-              Expanded(child: _pingLabel(context)),
+              const Spacer(),
+              _pingLabel(context),
             ],
           ),
           Align(
             alignment: Alignment.centerRight,
             child: TextButton.icon(
               onPressed: busy ? null : () => unawaited(onSignOut()),
-              icon: const Icon(Icons.logout_rounded),
+              icon: const Icon(Icons.logout_rounded, size: 18),
               label: const Text('退出登录'),
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                visualDensity: VisualDensity.compact,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
             ),
           ),
         ],
@@ -256,7 +257,7 @@ class _Details extends StatelessWidget {
   Widget _pingLabel(BuildContext context) {
     final result = ping;
     if (result == null) {
-      return const Text('尚未测试', style: TextStyle(fontSize: 12));
+      return const SizedBox.shrink();
     }
     if (!result.ok) {
       return Text(
@@ -275,30 +276,12 @@ class _Details extends StatelessWidget {
     );
   }
 
-  Widget _peerLine(BuildContext context, TailnetPeer peer) {
-    final detail = peer.via == 'derp'
-        ? '${tailnetViaLabel(peer.via)}${peer.relay != null ? ' ${peer.relay}' : ''}'
-        : '${tailnetViaLabel(peer.via)}${peer.endpoint != null ? ' ${peer.endpoint}' : ''}';
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Text(peer.hostName, style: const TextStyle(fontSize: 12)),
-          ),
-          Text(detail, style: TextStyle(fontSize: 12, color: context.primaryColor)),
-        ],
-      ),
-    );
-  }
-
   Widget _line(BuildContext context, String label, String value) => Padding(
-    padding: const EdgeInsets.only(bottom: 4),
+    padding: const EdgeInsets.only(bottom: 6),
     child: Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SizedBox(width: 48, child: Text(label, style: const TextStyle(fontSize: 12))),
+        SizedBox(width: 56, child: Text(label, style: const TextStyle(fontSize: 12))),
         Expanded(
           child: SelectableText(value, style: TextStyle(fontSize: 12, color: context.primaryColor)),
         ),
