@@ -54,6 +54,7 @@ android {
       def debugStore = file("../keys/debug.jks")
       if (debugStore.exists()) {
         storeFile debugStore
+        storeType "PKCS12"
         storePassword "immich-debug"
         keyAlias "immich-debug"
         keyPassword "immich-debug"
@@ -63,6 +64,7 @@ android {
       def releaseStore = file("../keys/release.jks")
       if (releaseStore.exists()) {
         storeFile releaseStore
+        storeType "PKCS12"
         storePassword "immich-release"
         keyAlias "immich-release"
         keyPassword "immich-release"
@@ -89,7 +91,8 @@ android {
     release {
       def hasFixedKey = file("../keys/release.jks").exists() && file("../keys/release.jks").length() > 0
       def hasLegacyKey = file("../key.jks").exists() && file("../key.jks").length() > 0
-      signingConfig (hasFixedKey || hasLegacyKey) ? signingConfigs.release : signingConfigs.debug
+      def releaseSigning = (hasFixedKey || hasLegacyKey) ? signingConfigs.release : signingConfigs.debug
+      signingConfig releaseSigning
       proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
 
       def prNumber = System.getenv("PR_NUMBER")
