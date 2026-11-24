@@ -1,7 +1,9 @@
 name: Build tailnet APK
 
-# Self-contained: no organisation secrets and no self-hosted runner. Push to
-# `tailnet` builds debug, push to `release` builds a signed release APK.
+# Self-contained: no organisation secrets and no self-hosted runner.
+# Push to `tailnet` builds debug; push to `release` builds a signed release APK.
+# A workflow change only applies to later pushes, and the paths filter ignores
+# empty commits, so a new branch needs one real diff to start.
 # Generated sources are vendored, so no codegen step is needed.
 
 on:
