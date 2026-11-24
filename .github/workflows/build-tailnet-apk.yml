@@ -69,20 +69,6 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Install host build tools
-        run: |
-          missing=""
-          for pkg in nasm cmake ninja-build pkg-config libssl-dev; do
-            dpkg -s "$pkg" >/dev/null 2>&1 || missing="$missing $pkg"
-          done
-          if [ -n "$missing" ]; then
-            echo "installing:$missing"
-            sudo apt-get update
-            sudo apt-get install -y --no-install-recommends $missing
-          else
-            echo "all host build tools already present"
-          fi
-
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
         with:
