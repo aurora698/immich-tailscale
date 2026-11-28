@@ -12,6 +12,8 @@ import androidx.media3.datasource.cronet.CronetDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import app.alextran.immich.BuildConfig
 import app.alextran.immich.NativeBuffer
+import app.alextran.immich.tailnet.TailnetManager
+import app.alextran.immich.tailnet.TailnetProxySelector
 import okhttp3.Cache
 import okhttp3.ConnectionPool
 import okhttp3.Cookie
@@ -36,6 +38,7 @@ import java.nio.file.Path
 import java.nio.file.SimpleFileVisitor
 import java.nio.file.attribute.BasicFileAttributes
 import java.net.Authenticator
+import java.net.Proxy
 import java.net.CookieHandler
 import java.net.PasswordAuthentication
 import java.net.Socket
@@ -54,6 +57,7 @@ import javax.net.ssl.X509KeyManager
 import javax.net.ssl.X509TrustManager
 
 const val USER_AGENT = "immich-android/${BuildConfig.VERSION_NAME}"
+private const val PROXY_USER = "tsbridge"
 private const val CERT_ALIAS = "client_cert"
 private const val PREFS_NAME = "immich.ssl"
 private const val PREFS_CERT_ALIAS = "immich.client_cert"
@@ -106,6 +110,13 @@ object HttpClientManager {
 
   val isMtls: Boolean get() = keyChainAlias != null || keyStore.containsAlias(CERT_ALIAS)
 
+  /**
+   * Media (thumbnails, originals, video) has to bypass Cronet when the tailnet
+   * is on: Cronet has no proxy support, so it cannot reach the embedded node.
+   * mTLS needs the same detour, which is why both share one switch.
+   */
+  val mediaViaOkHttp: Boolean get() = isMtls || TailnetManager.enabled.value
+
   fun initialize(context: Context) {
     if (initialized) return
     synchronized(this) {
@@ -119,6 +130,13 @@ object HttpClientManager {
       System.setProperty("http.agent", USER_AGENT)
       Authenticator.setDefault(object : Authenticator() {
         override fun getPasswordAuthentication(): PasswordAuthentication? {
+          // Proxy authentication for stack that cannot be configured directly:
+          // background_downloader's tasks use HttpURLConnection and answer a 407
+          // through this JVM-wide default authenticator.
+          if (requestorType == Authenticator.RequestorType.PROXY && requestingHost == "127.0.0.1") {
+            val proxy = TailnetManager.proxy ?: return null
+            return PasswordAuthentication(PROXY_USER, proxy.token.toCharArray())
+          }
           val url = requestingURL ?: return null
           if (url.userInfo.isNullOrEmpty()) return null
           val parts = url.userInfo.split(":", limit = 2)
@@ -302,7 +320,7 @@ object HttpClientManager {
 
   @OptIn(UnstableApi::class)
   fun createDataSourceFactory(headers: Map<String, String>): DataSource.Factory {
-    return if (isMtls) {
+    return if (mediaViaOkHttp) {
       OkHttpDataSource.Factory(client.newBuilder().cache(null).build())
     } else {
       ResolvingDataSource.Factory(
@@ -365,6 +383,16 @@ object HttpClientManager {
 
     return OkHttpClient.Builder()
       .cookieJar(cookieJar)
+      // The embedded node takes a moment to come up when the process is
+      // recreated; wait for it instead of failing the first requests (that is
+      // what made the backup and profile icons show errors on resume).
+      .addInterceptor { chain ->
+        val request = chain.request()
+        if (TailnetProxySelector.shouldTunnel(request.url.host)) {
+          TailnetManager.awaitProxyBlocking()
+        }
+        chain.proceed(request)
+      }
       .addInterceptor {
         val request = it.request()
         val builder = request.newBuilder()
@@ -379,6 +407,34 @@ object HttpClientManager {
       .connectionPool(connectionPool)
       .dispatcher(Dispatcher().apply { maxRequestsPerHost = MAX_REQUESTS_PER_HOST })
       .cache(Cache(cacheDir.apply { mkdirs() }, CACHE_SIZE_BYTES))
+      // Route the tailnet through the embedded node's loopback proxy; everything
+      // else (LAN, loopback) keeps going direct. See TailnetProxySelector.
+      .proxySelector(TailnetProxySelector)
+      // HTTPS tunnels ask for the proxy credentials up front (407 -> retry).
+      .proxyAuthenticator { _, response ->
+        val proxy = TailnetManager.proxy ?: return@proxyAuthenticator null
+        val credential = Credentials.basic(PROXY_USER, proxy.token)
+        if (response.request.header("Proxy-Authorization") == credential) {
+          null
+        } else {
+          response.request.newBuilder().header("Proxy-Authorization", credential).build()
+        }
+      }
+      // Plain HTTP is forwarded by the proxy, so every request carries them.
+      .addNetworkInterceptor { chain ->
+        val request = chain.request()
+        val proxy = TailnetManager.proxy
+        val viaTailnet = chain.connection()?.route()?.proxy?.type() == Proxy.Type.HTTP
+        if (!viaTailnet || request.isHttps || proxy == null) {
+          chain.proceed(request)
+        } else {
+          chain.proceed(
+            request.newBuilder()
+              .header("Proxy-Authorization", Credentials.basic(PROXY_USER, proxy.token))
+              .build(),
+          )
+        }
+      }
       // Don't cache failures or redirects, allowing future requests to hit the actual resource if available
       .addNetworkInterceptor {
         val response = it.proceed(it.request())

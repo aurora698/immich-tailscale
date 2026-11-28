@@ -11,6 +11,7 @@ import 'package:immich_mobile/providers/network.provider.dart';
 import 'package:immich_mobile/utils/url_helper.dart';
 import 'package:immich_mobile/widgets/settings/networking_settings/external_network_preference.dart';
 import 'package:immich_mobile/widgets/settings/networking_settings/local_network_preference.dart';
+import 'package:immich_mobile/widgets/settings/networking_settings/tailnet_preference.dart';
 import 'package:immich_ui/immich_ui.dart';
 
 class NetworkingSettings extends HookConsumerWidget {
@@ -137,6 +138,9 @@ class NetworkingSettings extends HookConsumerWidget {
           title: context.t.automatic_endpoint_switching_title,
           subtitle: context.t.automatic_endpoint_switching_subtitle,
         ),
+        const SizedBox(height: 16),
+        const SettingGroupTitle(title: 'Tailscale', icon: Icons.vpn_lock_outlined),
+        const TailnetPreference(),
         const SizedBox(height: 8),
         SettingGroupTitle(title: context.t.local_network, icon: Icons.home_outlined),
         LocalNetworkPreference(enabled: featureEnabled.value),

@@ -1,0 +1,6 @@
+# Upstream committed these files with CRLF. Keeping them as-is avoids a
+# whole-file diff every time a local checkout (core.autocrlf=true) is staged.
+# `-text` disables eol conversion; `diff` keeps textual diffs readable.
+lib/main.dart -text diff
+pubspec.lock -text diff
+android/gradle/wrapper/gradle-wrapper.properties -text diff

@@ -42,20 +42,43 @@ android {
     targetSdk = flutter.targetSdkVersion
     versionCode flutter.versionCode
     versionName flutter.versionName
-    resValue "string", "app_name", "Immich"
+    resValue "string", "app_name", "照片"
     buildConfigField "boolean", "PASSKEYS", "true"
   }
 
   signingConfigs {
+    // Fixed keys committed with the fork so every build keeps the same
+    // signature and can update the previous one. Release and debug use
+    // separate keys on purpose: they install as different package ids.
+    debug {
+      def debugStore = file("../keys/debug.jks")
+      if (debugStore.exists()) {
+        storeFile debugStore
+        storeType "PKCS12"
+        storePassword "immich-debug"
+        keyAlias "immich-debug"
+        keyPassword "immich-debug"
+      }
+    }
     release {
-      def keyAliasVal = System.getenv("ALIAS")
-      def keyPasswordVal = System.getenv("ANDROID_KEY_PASSWORD")
-      def storePasswordVal = System.getenv("ANDROID_STORE_PASSWORD")
+      def releaseStore = file("../keys/release.jks")
+      if (releaseStore.exists()) {
+        storeFile releaseStore
+        storeType "PKCS12"
+        storePassword "immich-release"
+        keyAlias "immich-release"
+        keyPassword "immich-release"
+      } else {
+        // Fallback for upstream-style CI (env vars or key.properties).
+        def keyAliasVal = System.getenv("ALIAS")
+        def keyPasswordVal = System.getenv("ANDROID_KEY_PASSWORD")
+        def storePasswordVal = System.getenv("ANDROID_STORE_PASSWORD")
 
-      keyAlias keyAliasVal ?: keystoreProperties['keyAlias']
-      keyPassword keyPasswordVal ?: keystoreProperties['keyPassword']
-      storeFile file("../key.jks").exists() ? file("../key.jks") : file(keystoreProperties['storeFile'] ?: '../key.jks')
-      storePassword storePasswordVal ?: keystoreProperties['storePassword']
+        keyAlias keyAliasVal ?: keystoreProperties['keyAlias']
+        keyPassword keyPasswordVal ?: keystoreProperties['keyPassword']
+        storeFile file("../key.jks").exists() ? file("../key.jks") : file(keystoreProperties['storeFile'] ?: '../key.jks')
+        storePassword storePasswordVal ?: keystoreProperties['storePassword']
+      }
     }
   }
 
@@ -66,8 +89,10 @@ android {
     }
 
     release {
-      def hasKeystore = file("../key.jks").exists() && file("../key.jks").length() > 0
-      signingConfig hasKeystore ? signingConfigs.release : signingConfigs.debug
+      def hasFixedKey = file("../keys/release.jks").exists() && file("../keys/release.jks").length() > 0
+      def hasLegacyKey = file("../key.jks").exists() && file("../key.jks").length() > 0
+      def releaseSigning = (hasFixedKey || hasLegacyKey) ? signingConfigs.release : signingConfigs.debug
+      signingConfig releaseSigning
       proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
 
       def prNumber = System.getenv("PR_NUMBER")
@@ -86,6 +111,8 @@ flutter {
 }
 
 dependencies {
+  // Embedded userspace Tailscale node (mobile/android/tsbridge, built with gomobile).
+  implementation files("libs/tsbridge.aar")
   implementation libs.okhttp
   implementation libs.cronet.embedded
   implementation libs.media3.datasource.okhttp

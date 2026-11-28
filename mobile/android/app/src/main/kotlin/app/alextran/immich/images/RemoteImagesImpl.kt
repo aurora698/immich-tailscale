@@ -239,6 +239,7 @@ class RemoteImagesImpl(context: Context) : RemoteImageApi {
 private object ImageFetcherManager {
   private lateinit var cacheDir: File
   private lateinit var fetcher: ImageFetcher
+  private var fetcherUsesOkHttp = false
   private var initialized = false
 
   fun initialize(context: Context) {
@@ -258,7 +259,23 @@ private object ImageFetcherManager {
     onSuccess: (NativeByteBuffer, String?) -> Unit,
     onFailure: (Exception) -> Unit,
   ) {
-    fetcher.fetch(url, signal, onSuccess, onFailure)
+    activeFetcher().fetch(url, signal, onSuccess, onFailure)
+  }
+
+  /**
+   * The tailnet switch flips [HttpClientManager.mediaViaOkHttp] at runtime, but the
+   * fetcher is built once and clientChangedListeners only fire on mTLS changes.
+   * Rebuild lazily on the first fetch after the switch; otherwise thumbnails keep
+   * using Cronet, which cannot reach the embedded node, and time out.
+   */
+  private fun activeFetcher(): ImageFetcher = synchronized(this) {
+    val wantOkHttp = HttpClientManager.mediaViaOkHttp
+    if (!this::fetcher.isInitialized || wantOkHttp != fetcherUsesOkHttp) {
+      val previous = if (this::fetcher.isInitialized) fetcher else null
+      fetcher = build()
+      previous?.drain()
+    }
+    fetcher
   }
 
   fun clearCache(onCleared: (Result<Long>) -> Unit) {
@@ -274,7 +291,10 @@ private object ImageFetcherManager {
   }
 
   private fun build(): ImageFetcher {
-    return if (HttpClientManager.isMtls) {
+    // Cronet cannot use the tailnet proxy, so thumbnails take the OkHttp path
+    // whenever the node is enabled (or mTLS is configured).
+    fetcherUsesOkHttp = HttpClientManager.mediaViaOkHttp
+    return if (fetcherUsesOkHttp) {
       OkHttpImageFetcher.create(cacheDir)
     } else {
       CronetImageFetcher()

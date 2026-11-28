@@ -1,0 +1,215 @@
+name: Build tailnet APK
+
+# Self-contained: no organisation secrets and no self-hosted runner.
+# Push to `tailnet` builds debug; push to `release` builds a signed release APK.
+# A workflow change only applies to later pushes, and the paths filter ignores
+# empty commits, so a new branch needs one real diff to start.
+# Generated sources are vendored, so no codegen step is needed.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch or tag to build
+        required: false
+        default: tailnet
+      mode:
+        description: Build mode
+        type: choice
+        options:
+          - debug
+          - release
+        default: debug
+  push:
+    branches:
+      - tailnet
+      - release
+    paths:
+      - 'mobile/**'
+      - 'native/**'
+      - 'open-api/**'
+      - 'i18n/**'
+      - '.github/workflows/build-tailnet-apk.yml'
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: tailnet-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: '3.47.9'
+  NDK_VERSION: '28.2.13676358'
+  BUILD_MODE: ${{ inputs.mode || (github.ref_name == 'release' && 'release' || 'debug') }}
+
+jobs:
+  build:
+    name: Build APK (arm64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+
+    steps:
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: false
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: false
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+          fetch-depth: 1
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: ''
+
+      - name: Install Android SDK packages
+        run: |
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager --install \
+            "platforms;android-36" \
+            "build-tools;36.0.0" \
+            "platform-tools" \
+            "ndk;${NDK_VERSION}"
+
+      - name: Set up Rust 1.99.1
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: '1.99.1'
+          targets: aarch64-linux-android
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            native/target
+          key: cargo-${{ runner.os }}-${{ hashFiles('native/Cargo.lock') }}
+          restore-keys: |
+            cargo-${{ runner.os }}-
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('mobile/android/**/*.gradle*', 'mobile/android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+
+      - name: Resolve Dart packages
+        working-directory: mobile
+        run: flutter pub get
+
+      - name: Environment check
+        working-directory: mobile
+        run: |
+          export ANDROID_NDK_HOME="${ANDROID_HOME}/ndk/${NDK_VERSION}"
+          echo "mode=${BUILD_MODE}"
+          echo "ANDROID_HOME=${ANDROID_HOME}"
+          echo "ANDROID_NDK_HOME=${ANDROID_NDK_HOME}"
+          ls -d "${ANDROID_NDK_HOME}" || true
+          rustc --version || true
+          flutter doctor -v || true
+
+      - name: Build APK
+        working-directory: mobile
+        run: |
+          set -o pipefail
+          export ANDROID_NDK_HOME="${ANDROID_HOME}/ndk/${NDK_VERSION}"
+          export ANDROID_NDK_ROOT="${ANDROID_NDK_HOME}"
+          if [ "$BUILD_MODE" = "release" ]; then
+            flutter build apk --release --target-platform=android-arm64 2>&1 | tee /tmp/build.log
+          else
+            flutter build apk --debug --verbose --target-platform=android-arm64 2>&1 | tee /tmp/build.log
+          fi
+
+      - name: Resolve output paths
+        id: out
+        run: |
+          if [ "$BUILD_MODE" = "release" ]; then
+            echo "apk=mobile/build/app/outputs/flutter-apk/app-release.apk" >> "$GITHUB_OUTPUT"
+            echo "artifact=immich-tailnet-release-apk" >> "$GITHUB_OUTPUT"
+            echo "tag=apk-latest-release" >> "$GITHUB_OUTPUT"
+            echo "title=Latest tailnet release APK" >> "$GITHUB_OUTPUT"
+          else
+            echo "apk=mobile/build/app/outputs/flutter-apk/app-debug.apk" >> "$GITHUB_OUTPUT"
+            echo "artifact=immich-tailnet-debug-apk" >> "$GITHUB_OUTPUT"
+            echo "tag=apk-latest" >> "$GITHUB_OUTPUT"
+            echo "title=Latest tailnet debug APK" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Show artifact
+        run: ls -lh mobile/build/app/outputs/flutter-apk/
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.out.outputs.artifact }}
+          path: ${{ steps.out.outputs.apk }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Attach failure log to the commit
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          if [ -s /tmp/build.log ]; then
+            tail -n 400 /tmp/build.log | cut -c1-60000 > /tmp/fail-tail.log
+          else
+            gh run view "${GITHUB_RUN_ID}" --log-failed > /tmp/fail.log 2>&1
+            tail -n 400 /tmp/fail.log | cut -c1-60000 > /tmp/fail-tail.log
+          fi
+          wc -c /tmp/fail-tail.log
+          gh api -X POST "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/comments" \
+            -f body="$(cat /tmp/fail-tail.log)" || true
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: /tmp/build.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Publish APK to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.out.outputs.tag }}
+          name: ${{ steps.out.outputs.title }}
+          prerelease: true
+          files: ${{ steps.out.outputs.apk }}
+          body: |
+            Built from `${{ github.sha }}` on `${{ github.ref_name }}` (mode: `${{ env.BUILD_MODE }}`).
+
+            Install with `adb install -r -t <file>.apk`, or open the file on the phone.
+            The release build installs as `app.alextran.immich` (same id as the store app), so it replaces it;
+            the debug build installs as `app.alextran.immich.debug` and coexists.
