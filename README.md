@@ -1,128 +1,135 @@
-<p align="center"> 
-  <br/>
-  <a href="https://opensource.org/license/agpl-v3"><img src="https://img.shields.io/badge/License-AGPL_v3-blue.svg?color=3F51B5&style=for-the-badge&label=License&logoColor=000000&labelColor=ececec" alt="License: AGPLv3"></a>
-  <a href="https://discord.immich.app">
-    <img src="https://img.shields.io/discord/979116623879368755.svg?label=Discord&logo=Discord&style=for-the-badge&logoColor=000000&labelColor=ececec" alt="Discord"/>
-  </a>
-  <br/>
-  <br/>
+# Immich + Embedded Tailscale
+
+<p>
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-AGPL--3.0-3F51B5?style=flat-square"></a>
+  <img alt="Platform" src="https://img.shields.io/badge/platform-Android-3DDC84?style=flat-square&logo=android&logoColor=white">
+  <img alt="Upstream" src="https://img.shields.io/badge/upstream-immich--app%2Fimmich-555?style=flat-square">
 </p>
 
-<p align="center">
-  <a href="#">
-    <img src="design/immich-logo-stacked-light.svg" width="300" alt="Immich Logo">
-  </a>
-</p>
-<h3 align="center">High performance self-hosted photo and video management solution</h3>
-<br/>
-<a href="https://immich.app">
-<img src="design/immich-screenshots.png" title="Main Screenshot">
-</a>
-<br/>
+**English** · [简体中文](README.zh.md)
 
-<p align="center">
-  <a href="readme_i18n/README_ca_ES.md">Català</a>
-  <a href="readme_i18n/README_es_ES.md">Español</a>
-  <a href="readme_i18n/README_fr_FR.md">Français</a>
-  <a href="readme_i18n/README_it_IT.md">Italiano</a>
-  <a href="readme_i18n/README_ja_JP.md">日本語</a>
-  <a href="readme_i18n/README_ko_KR.md">한국어</a>
-  <a href="readme_i18n/README_de_DE.md">Deutsch</a>
-  <a href="readme_i18n/README_nl_NL.md">Nederlands</a>
-  <a href="readme_i18n/README_tr_TR.md">Türkçe</a>
-  <a href="readme_i18n/README_zh_CN.md">简体中文</a>
-  <a href="readme_i18n/README_zh_TW.md">正體中文</a>
-  <a href="readme_i18n/README_uk_UA.md">Українська</a>
-  <a href="readme_i18n/README_ru_RU.md">Русский</a>
-  <a href="readme_i18n/README_bg_BG.md">Български</a>
-  <a href="readme_i18n/README_pl_PL.md">Polski</a>
-  <a href="readme_i18n/README_pt_BR.md">Português Brasileiro</a>
-  <a href="readme_i18n/README_sv_SE.md">Svenska</a>
-  <a href="readme_i18n/README_ar_JO.md">العربية</a>
-  <a href="readme_i18n/README_vi_VN.md">Tiếng Việt</a>
-  <a href="readme_i18n/README_th_TH.md">ภาษาไทย</a>
-  <a href="readme_i18n/README_ml_IN.md">മലയാളം</a>
-</p>
+An Immich fork that compiles a **Tailscale node directly into the Android client**.
 
+Install the APK and your phone can reach the Immich server at home from any network — no public IP, no port forwarding, no system-wide VPN. The tunnel only carries this app's traffic.
 
-> [!WARNING]
-> ⚠️ Always follow [3-2-1](https://www.backblaze.com/blog/the-3-2-1-backup-strategy/) backup plan for your precious photos and videos!
-> 
- 
+Built on [immich-app/immich](https://github.com/immich-app/immich) (AGPL-3.0). The **server is unchanged** — deploy stock Immich.
 
-> [!NOTE]
-> You can find the main documentation, including installation guides, at https://immich.app/.
+> This README replaces the upstream one; the original is still in git history (`git show 2acfe9e^:README.md`).
 
-## Links
+---
 
-- [Documentation](https://docs.immich.app/)
-- [About](https://docs.immich.app/overview/introduction)
-- [Installation](https://docs.immich.app/install/requirements)
-- [Roadmap](https://immich.app/roadmap)
-- [Demo](#demo)
-- [Features](#features)
-- [Translations](https://docs.immich.app/developer/translations)
-- [Contributing](https://docs.immich.app/overview/support-the-project)
+## Why this fork
 
-## Demo
+| | Upstream Immich | This fork |
+|---|---|---|
+| Remote access | Needs public exposure, or the Tailscale app on the phone | Tailnet node inside the app; only Immich traffic is tunnelled |
+| System VPN | The third-party Tailscale app occupies the VPN slot | Slot stays free, other apps unaffected |
+| Home Wi-Fi | — | Bypasses the tunnel and goes over LAN, which is faster |
+| Build | Generated sources are gitignored, codegen required | Generated sources are vendored; `flutter build apk` works from a fresh clone |
+| Signing | CI uses org secrets | Fixed keystores in-repo, so builds update each other |
 
-Access the demo [here](https://demo.immich.app). For the mobile app, you can use `https://demo.immich.app` for the `Server Endpoint URL`.
+Branches: `main` is the merged result; `tailnet` / `release` are the feature branches. Pushing `tailnet` builds a debug APK, pushing `release` builds a signed release APK.
 
-### Login credentials
-
-| Email           | Password |
-| --------------- | -------- |
-| demo@immich.app | demo     |
+---
 
 ## Features
 
-| Features                                     | Mobile | Web |
-| :------------------------------------------- | ------ | --- |
-| Upload and view videos and photos            | Yes    | Yes |
-| Auto backup when the app is opened           | Yes    | N/A |
-| Prevent duplication of assets                | Yes    | Yes |
-| Selective album(s) for backup                | Yes    | N/A |
-| Download photos and videos to local device   | Yes    | Yes |
-| Multi-user support                           | Yes    | Yes |
-| Album and Shared albums                      | Yes    | Yes |
-| Scrubbable/draggable scrollbar               | Yes    | Yes |
-| Support raw formats                          | Yes    | Yes |
-| Metadata view (EXIF, map)                    | Yes    | Yes |
-| Search by metadata, objects, faces, and CLIP | Yes    | Yes |
-| Administrative functions (user management)   | No     | Yes |
-| Background backup                            | Yes    | N/A |
-| Virtual scroll                               | Yes    | Yes |
-| OAuth support                                | Yes    | Yes |
-| API Keys                                     | N/A    | Yes |
-| LivePhoto/MotionPhoto backup and playback    | Yes    | Yes |
-| Support 360 degree image display             | No     | Yes |
-| User-defined storage structure               | Yes    | Yes |
-| Public Sharing                               | Yes    | Yes |
-| Archive and Favorites                        | Yes    | Yes |
-| Global Map                                   | Yes    | Yes |
-| Partner Sharing                              | Yes    | Yes |
-| Facial recognition and clustering            | Yes    | Yes |
-| Memories (x years ago)                       | Yes    | Yes |
-| Offline support                              | Yes    | No  |
-| Read-only gallery                            | Yes    | Yes |
-| Stacked Photos                               | Yes    | Yes |
-| Tags                                         | No     | Yes |
-| Folder View                                  | Yes    | Yes |
+- **One switch** — Settings → Networking → Tailscale remote access starts a userspace node inside the app process.
+- **Two ways to sign in** — browser authorization, or paste a `tskey-auth-…` key.
+- **Precise routing** — only `*.ts.net`, `100.64.0.0/10`, `fd7a:115c:a1e0::/48` and `100.100.100.100` go through the node. Localhost, LAN and public hosts stay direct.
+- **Diagnostics** — node state, tailnet name, node IP / MagicDNS name, login account; "Test latency" measures a real connection to the server and reports whether it took a **direct path, a DERP relay or a peer relay**.
+- **Background work too** — foreground requests, background backup and the upload queue share the same tunnel.
+- **Clean teardown** — turning the switch off stops the node and frees the port; signing out removes the device from the tailnet; Wi-Fi ↔ cellular switches notify the node to re-probe immediately.
 
-## Translations
+---
 
-Read more about translations [here](https://docs.immich.app/developer/translations).
+## Use cases
 
-<a href="https://hosted.weblate.org/engage/immich/">
-<img src="https://hosted.weblate.org/widget/immich/immich/multi-auto.svg" alt="Translation status" />
-</a>
+1. **Self-hosted Immich on a home NAS, backing up from anywhere.** Home connections rarely have a public IPv4, so services behind carrier NAT are unreachable from outside. Flip the switch and it works; at home it falls back to the LAN automatically.
+2. **Not wanting a global VPN for one app.** A system-wide tunnel takes over every other app's traffic and trips alarms in some banking apps. Here only Immich's own tailnet requests are affected.
+3. **Sharing one Immich with family.** Put them in the same tailnet, install the APK, point them all at the same `https://<host>.<tailnet>.ts.net`.
+4. **Judging link quality on a bad network.** The panel shows whether traffic is P2P or pushed onto a DERP relay, and how much latency that costs.
+5. **Rolling your own private build.** Signing keys and a complete CI workflow ship with the repo — fork, rename, keep producing APKs.
 
-## Repository activity
+---
 
-![Activities](https://repobeats.axiom.co/api/embed/9e86d9dc3ddd137161f2f6d2e758d7863b1789cb.svg "Repobeats analytics image")
+## Getting started
 
-## Contributors
+**Install** (Releases)
+- `apk-latest-release` — package `app.alextran.immich`, **replaces the store version**
+- `apk-latest` — debug build, package `…immich.debug`, coexists with the store version
 
-<a href="https://github.com/immich-app/immich/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=immich-app/immich" width="100%"/>
-</a>
+**Server**: install Tailscale and join it to your tailnet, enable MagicDNS. Immich's default `0.0.0.0:2283` is enough.
+
+**Client**: enter `https://<host>.<tailnet>.ts.net` as the server URL (the full name is required — short MagicDNS names are deliberately not tunnelled) → turn the switch on → sign in → run "Test latency" to confirm the path.
+
+---
+
+## Building
+
+Generated sources are vendored, so no bootstrap step is needed:
+
+```bash
+bash mobile/tooling/build-apk.sh            # debug
+bash mobile/tooling/build-apk.sh --release
+```
+
+Toolchain: Flutter 3.47.9, JDK 21, NDK 28.2.13676358, Rust 1.99.1.
+
+Changed the Go bridge (`mobile/android/tsbridge/`)? Rebuild the AAR:
+
+```bash
+bash mobile/android/tsbridge/build.sh       # -> app/libs/tsbridge.aar
+```
+
+Changed a pigeon or drift schema? `bash mobile/tooling/bootstrap.sh`.
+
+CI (`.github/workflows/build-tailnet-apk.yml`) provisions everything itself — no org secrets, no self-hosted runner — and attaches the failing build log to the commit on failure.
+
+---
+
+## How it works
+
+```
+Dart/Flutter ──pigeon──▶ Kotlin TailnetManager
+                           ├─ ProxySelector ──▶ 127.0.0.1:48113 (local HTTP proxy)
+                           └─ OkHttp/Cronet/          │
+                              HttpURLConnection       ▼
+                                                 Go tsnet node ──▶ tailnet
+```
+
+- **A userspace node, not a VPN.** `tsnet` runs the node in-process; gomobile binds it into an AAR. It never touches `VpnService`, so the system VPN slot stays empty.
+- **A loopback proxy carries the traffic.** Go serves an HTTP proxy on `127.0.0.1:48113` (fixed when possible) supporting `CONNECT` and plain forwarding; every outbound connection dials through `tsnet.Server.Dial`. The proxy demands Basic Auth with a per-process random token — loopback ports are reachable by any app on the device.
+- **Java only decides what gets tunnelled.** The `ProxySelector` returns the local proxy for tailnet destinations and `NO_PROXY` for everything else.
+- **Three HTTP stacks to satisfy.** OkHttp uses the ProxySelector plus an interceptor that waits for the node on cold start; Cronet has no proxy support, so media falls back to OkHttp; `background_downloader` runs on HttpURLConnection, which ignores ProxySelectors and needs an explicit proxy plus the JVM-wide `Authenticator` answering 407.
+- **Two Android quirks.** Apps get no netlink socket, so the interface table comes from `java.net.NetworkInterface` and is fed to `netmon`, with `InjectEvent()` on network changes. And since there is no `HOME`/`TMPDIR`, both are pointed at app-private storage.
+
+---
+
+## Limitations
+
+- **Android only.** iOS has nothing but the empty pigeon binding.
+- **arm64 builds only.** The AAR ships arm64 and amd64; the APK targets arm64.
+- **Short MagicDNS names are not tunnelled** — use the full `<host>.<tailnet>.ts.net`.
+- **Signing keys are committed** (passwords in `build.gradle`). That keeps in-place updates working, but anyone can sign an APK with the same package id. Fine for personal sideloading, not for distribution.
+- **Generated sources are vendored**, which makes the repo considerably larger than upstream.
+
+---
+
+## Layout
+
+```
+mobile/android/app/src/main/kotlin/.../tailnet/   node lifecycle, routing, pigeon impl
+mobile/android/tsbridge/bridge.go                 tsnet + loopback proxy (Go)
+mobile/android/app/libs/tsbridge.aar              prebuilt AAR (8 MB)
+mobile/lib/providers/tailnet.provider.dart        state polling and actions
+mobile/lib/widgets/settings/.../tailnet_preference.dart   settings card
+mobile/pigeon/tailnet_api.dart                    native API definition
+.github/workflows/build-tailnet-apk.yml           APK CI
+```
+
+---
+
+## License
+
+[AGPL-3.0](LICENSE), inherited from upstream. Fork changes are released under the same terms.
